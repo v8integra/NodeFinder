@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: NodeFinder
+## Notes: Points you to the nearest herb or ore node you've chosen, using the nodes your minimap tracking is showing right now.
+## Author: Keith Francis
+## Version: 0.1.0
+## SavedVariables: NodeFinderDB
+## IconTexture: Interface\AddOns\NodeFinder\Media\Icon\NodeFinderIcon.tga
+
+Core\Core.lua
+Modules\NodeData.lua
+Modules\Scanner.lua
+Modules\Tracking.lua
+Modules\Arrow.lua
+Modules\Options.lua
