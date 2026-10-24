@@ -99,6 +99,8 @@ local function PlayerWorldPosition()
     return continent, world.x, world.y
 end
 
+NF.PlayerWorldPosition = PlayerWorldPosition
+
 -- The nearest enabled node, and its offset from the player.
 function NF:GetNearestNode()
     local continent, px, py = PlayerWorldPosition()

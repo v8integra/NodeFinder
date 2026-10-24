@@ -18,6 +18,19 @@ NF.DEFAULTS = {
             y = 150,
             size = 48,
         },
+        -- A light beam over the node you're about to reach (Modules/Highlight.lua).
+        highlight = {
+            enabled = true,
+            -- Also show the game's own interact icon above it.
+            icon = true,
+            -- With ForeverLootSparkles installed, handle ore and herbs here and
+            -- leave its ore/herb sparkles off (Modules/Coexist.lua).
+            takeOver = true,
+            scale = 1,
+            offsetY = -45,
+            tintOre = { 0.45, 0.8, 1 },
+            tintHerb = { 0.5, 1, 0.4 },
+        },
     },
 }
 

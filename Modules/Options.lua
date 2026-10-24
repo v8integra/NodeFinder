@@ -5,7 +5,7 @@ local HEADER_HEIGHT = 24
 local CONTENT_WIDTH = 300
 
 local options = CreateFrame("Frame", "NodeFinderOptions", UIParent, "BasicFrameTemplateWithInset")
-options:SetSize(360, 480)
+options:SetSize(360, 640)
 options:SetPoint("CENTER")
 options:SetMovable(true)
 options:EnableMouse(true)
@@ -55,11 +55,109 @@ trackingCheck:SetScript("OnLeave", function()
     GameTooltip:Hide()
 end)
 
+local function MakeCheck(anchor, text, tooltip, onClick)
+    local check = CreateFrame("CheckButton", nil, options, "UICheckButtonTemplate")
+    check:SetSize(24, 24)
+    check:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+    local label = check:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("LEFT", check, "RIGHT", 2, 0)
+    label:SetText(text)
+    check.label = label
+    check:SetScript("OnClick", function(self)
+        onClick(self:GetChecked() and true or false)
+    end)
+    check:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(text, 1, 1, 1)
+        GameTooltip:AddLine(tooltip, 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    check:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    return check
+end
+
+local highlightCheck = MakeCheck(trackingCheck, "Light beam on the node you reach",
+    "Within about 15 yards the game picks the nearest thing you can interact with. When that is a node you ticked, a beam of light marks it. Nodes you didn't tick get nothing. Farther away than that, follow the arrow.",
+    function(on) NF:SetHighlightOption("enabled", on) end)
+
+local iconCheck = MakeCheck(highlightCheck, "Show the game's interact icon too",
+    "The game's own icon above the node. The same setting also puts it above other things you can interact with.",
+    function(on) NF:SetHighlightOption("icon", on) end)
+
+local takeOverCheck = MakeCheck(iconCheck, "Take over ore and herbs from ForeverLootSparkles",
+    "With ForeverLootSparkles installed, NodeFinder's beam handles ore and herbs and that addon's ore/herb sparkles stay off for the session. Its quest, corpse and loot sparkles are untouched, and its saved settings are put back when you log out.",
+    function(on) NF:SetHighlightOption("takeOver", on) end)
+
+-- Beam colours: a row of presets per node type.
+local TINTS = {
+    { 0.45, 0.8, 1 }, { 0.5, 1, 0.4 }, { 1, 0.85, 0.4 }, { 1, 1, 1 },
+    { 1, 0.6, 0.25 }, { 1, 0.35, 0.35 }, { 0.75, 0.5, 1 }, { 1, 0.5, 0.85 },
+}
+local swatches = {}
+
+local function SameColor(a, b)
+    return math.abs(a[1] - b[1]) < 0.01 and math.abs(a[2] - b[2]) < 0.01 and math.abs(a[3] - b[3]) < 0.01
+end
+
+local function MakeSwatchRow(anchor, text, key)
+    local label = options:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, -8)
+    label:SetText(text)
+
+    for i, tint in ipairs(TINTS) do
+        local button = CreateFrame("Button", nil, options)
+        button:SetSize(18, 18)
+        button:SetPoint("LEFT", label, "LEFT", 118 + (i - 1) * 22, 0)
+        local border = button:CreateTexture(nil, "BACKGROUND")
+        border:SetAllPoints()
+        local fill = button:CreateTexture(nil, "ARTWORK")
+        fill:SetPoint("TOPLEFT", 2, -2)
+        fill:SetPoint("BOTTOMRIGHT", -2, 2)
+        fill:SetColorTexture(tint[1], tint[2], tint[3], 1)
+        button:SetScript("OnClick", function()
+            NF.db.settings.highlight[key] = { tint[1], tint[2], tint[3] }
+            for _, other in ipairs(swatches) do
+                other.refresh()
+            end
+        end)
+        swatches[#swatches + 1] = {
+            refresh = function()
+                local selected = SameColor(NF.db.settings.highlight[key], tint)
+                if selected then
+                    border:SetColorTexture(1, 1, 1, 1)
+                else
+                    border:SetColorTexture(0, 0, 0, 1)
+                end
+            end,
+        }
+    end
+    return label
+end
+
+local oreTintRow = MakeSwatchRow(takeOverCheck, "Ore beam colour", "tintOre")
+local herbTintRow = MakeSwatchRow(oreTintRow, "Herb beam colour", "tintHerb")
+
 local checks = {}
 
 local function RefreshChecks()
     enabledCheck:SetChecked(NF.db.settings.enabled)
     trackingCheck:SetChecked(NF.db.settings.manageTracking)
+    local highlight = NF.db.settings.highlight
+    highlightCheck:SetChecked(highlight.enabled)
+    iconCheck:SetChecked(highlight.icon)
+    takeOverCheck:SetChecked(highlight.takeOver)
+    if NF:IsOtherLoaded() then
+        takeOverCheck:Enable()
+        takeOverCheck.label:SetTextColor(1, 1, 1)
+    else
+        takeOverCheck:Disable()
+        takeOverCheck.label:SetTextColor(0.5, 0.5, 0.5)
+    end
+    for _, swatch in ipairs(swatches) do
+        swatch.refresh()
+    end
     for name, check in pairs(checks) do
         check:SetChecked(NF:IsNodeEnabled(name))
     end
@@ -77,7 +175,7 @@ local function MakeButton(text, list, enabled)
 end
 
 local oreAll = MakeButton("All ore", NF.ORES, true)
-oreAll:SetPoint("TOPLEFT", trackingCheck, "BOTTOMLEFT", 0, -4)
+oreAll:SetPoint("TOPLEFT", herbTintRow, "BOTTOMLEFT", -4, -10)
 
 local oreNone = MakeButton("No ore", NF.ORES, false)
 oreNone:SetPoint("LEFT", oreAll, "RIGHT", 4, 0)
@@ -249,6 +347,55 @@ local function RunProbe(step)
     end
 end
 
+local function OnOff(value)
+    return value and "on" or "off"
+end
+
+local function HighlightCommand(arg)
+    local settings = NF.db.settings.highlight
+    local sub, value = arg:match("^(%S*)%s*(.-)$")
+    local flag = nil
+    if value == "on" then
+        flag = true
+    elseif value == "off" then
+        flag = false
+    end
+
+    if sub == "" or sub == "status" then
+        Say("beam %s, game icon %s, taking over ForeverLootSparkles' ore/herbs %s%s, size %.2f, height offset %d.",
+            OnOff(settings.enabled), OnOff(settings.icon), OnOff(settings.takeOver),
+            NF:IsOtherLoaded() and "" or " (not installed)", settings.scale, settings.offsetY)
+        Say("/nf highlight on | off | icon on|off | takeover on|off | size <0.5-2.5> | offset <pixels> | test | debug")
+    elseif sub == "on" or sub == "off" then
+        NF:SetHighlightOption("enabled", sub == "on")
+        Say("beam %s", sub)
+    elseif sub == "icon" and flag ~= nil then
+        NF:SetHighlightOption("icon", flag)
+        Say("game icon %s", value)
+    elseif sub == "takeover" and flag ~= nil then
+        NF:SetHighlightOption("takeOver", flag)
+        Say("taking over ForeverLootSparkles' ore and herbs: %s", value)
+    elseif sub == "size" and tonumber(value) then
+        NF:SetHighlightOption("scale", math.max(0.5, math.min(2.5, tonumber(value))))
+        Say("beam size %.2f", settings.scale)
+    elseif sub == "offset" and tonumber(value) then
+        NF:SetHighlightOption("offsetY", math.max(-300, math.min(300, tonumber(value))))
+        Say("beam height offset %.0f (lower puts the beam's base lower on the node)", settings.offsetY)
+    elseif sub == "test" then
+        local on = value ~= "off"
+        NF:SetHighlightTest(on)
+        if on then
+            Say("test mode on: any object you soft-target gets the beam, to check its placement. /nf highlight test off to end.")
+        else
+            Say("test mode off: ticked nodes only.")
+        end
+    elseif sub == "debug" then
+        NF:HighlightDebug()
+    else
+        Say("/nf highlight on | off | icon on|off | takeover on|off | size <0.5-2.5> | offset <pixels> | test | debug")
+    end
+end
+
 SLASH_NODEFINDER1 = "/nodefinder"
 SLASH_NODEFINDER2 = "/nf"
 SlashCmdList["NODEFINDER"] = function(msg)
@@ -283,6 +430,8 @@ SlashCmdList["NODEFINDER"] = function(msg)
                 NF.db.settings.manageTracking and "on" or "off",
                 NF.trackingGaveUp and " (stopped after a conflict)" or "")
         end
+    elseif command == "highlight" then
+        HighlightCommand(arg)
     elseif command == "tooltip" then
         if arg == "shared" or arg == "private" then
             NF.db.settings.sharedTooltip = (arg == "shared")
@@ -292,7 +441,7 @@ SlashCmdList["NODEFINDER"] = function(msg)
                 NF.db.settings.sharedTooltip and "shared" or "private")
         end
     else
-        Say("/nf (options) | on | off | status | unknown | test | probe [step] | tracking on|off | tooltip shared|private")
+        Say("/nf (options) | on | off | status | unknown | test | probe [step] | tracking on|off | highlight | tooltip shared|private")
     end
 end
 
